@@ -1,0 +1,43 @@
+classDiagram
+    class Owner {
+        +String name
+        +List~Pet~ pets
+        +add_pet(pet: Pet) None
+        +remove_pet(pet_name: str) None
+        +get_pets() List~Pet~
+    }
+
+    class Pet {
+        +String name
+        +String species
+        +List~Task~ tasks
+        +add_task(task: Task) None
+        +remove_task(task_name: str) None
+        +get_tasks() List~Task~
+    }
+
+    class Task {
+        +String name
+        +time time
+        +String priority
+        +String description
+        +bool completion_status
+        +String recurrence
+        +date due_date
+        +mark_complete() Task
+    }
+
+    class Scheduler {
+        +Owner owner
+        +build_schedule(sort_key: str) List~Task~
+        +sort_tasks(tasks: List, key: str) List~Task~
+        +filter_by_pet(pet_name: str, sort_key: str) List~Task~
+        +filter_by_status(completed: bool) List~Task~
+        +get_conflicts() List~str~
+        +mark_task_complete(pet_name: str, task_name: str) Task
+    }
+
+    Owner "1" --> "1..*" Pet : owns
+    Pet "1" --> "0..*" Task : has
+    Scheduler "1" --> "1" Owner : retrieves tasks from
+    Task ..> Task : mark_complete() creates next occurrence

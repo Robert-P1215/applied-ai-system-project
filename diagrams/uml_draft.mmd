@@ -1,0 +1,35 @@
+classDiagram
+    class Owner {
+        +String name
+        +List pets
+        +add_pet(pet) None
+        +remove_pet(pet_name) None
+        +get_pets() List
+    }
+
+    class Pet {
+        +String name
+        +String species
+        +List tasks
+        +add_task(task) None
+        +remove_task(task_name) None
+        +get_tasks() List
+    }
+
+    class Task {
+        +String description
+        +String due_date
+        +String priority
+        +bool completion_status
+        +mark_complete() None
+    }
+
+    class Scheduler {
+        +Owner owner
+        +build_schedule() List
+        +sort_tasks(tasks) List
+    }
+
+    Owner "1" --> "1..*" Pet : owns
+    Pet "1" --> "0..*" Task : has
+    Scheduler "1" --> "1" Owner : retrieves tasks from
