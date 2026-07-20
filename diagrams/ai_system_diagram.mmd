@@ -1,0 +1,56 @@
+flowchart LR
+
+    %% ===== INPUT =====
+    subgraph INPUT["INPUT"]
+        Q["Owner's natural-language\nquery or request\n(chat_input in ai_assistant.py)"]
+        CSV[("Stored pet/task data\ndata/*.csv")]
+    end
+
+    %% ===== PROCESS =====
+    subgraph PROCESS["PROCESS"]
+        direction TB
+
+        subgraph RET["Retriever"]
+            R["PetRetriever\nbuild_chunks() -> per-pet / per-task /\nsummary / conflict chunks\nscore_chunk() word-overlap ranking"]
+        end
+
+        subgraph AGENT["Agent"]
+            direction TB
+            RAG["GeminiClient.answer_from_snippets()\nRAG: answers ONLY from retrieved chunks,\nmust refuse if evidence is insufficient"]
+            ACT["GeminiClient.run_action()\nfunction-calling agent: picks from\nadd_pet / add_task / remove_task /\nmark_task_complete / get_conflicts"]
+            DOMAIN["Scheduler / Owner / Pet / Task\n(pawpal_system.py)\nexecutes the tool the agent chose"]
+            RAG -.-> |"grounds answer in"| R
+            ACT --> DOMAIN
+        end
+    end
+
+    %% ===== OUTPUT =====
+    subgraph OUTPUT["OUTPUT"]
+        ANS["Answer text in chat"]
+        MUT["Updated schedule\n(new/edited/completed tasks)"]
+        SAVE[("storage.save_owner()\nwrites data/*.csv")]
+    end
+
+    %% ===== VERIFICATION / HUMAN-IN-THE-LOOP =====
+    subgraph CHECK["EVALUATION & HUMAN REVIEW"]
+        TESTS["Automated tests\ntests/test_pawpal.py (pytest)\nverify Scheduler/Task logic —\nsorting, recurrence, conflict detection —\nthat the agent's tools depend on"]
+        HUMAN["Human review (the owner)\nreads the chat answer and the\nschedule table before trusting or\nacting on it; refusals\n('I do not know...') are expected,\nnot treated as failures"]
+        DEV["Developer verification\n(see reflection.md) — AI-suggested\ncode is run and checked manually,\nnever accepted on faith"]
+    end
+
+    Q --> R
+    CSV --> R
+    CSV --> ACT
+
+    R --> RAG
+    RAG --> ANS
+    Q --> ACT
+    ACT --> MUT
+    DOMAIN --> SAVE
+
+    ANS --> HUMAN
+    MUT --> HUMAN
+    HUMAN -->|"unclear / wrong answer ->\nrephrase and re-ask"| Q
+
+    TESTS -.->|"gives confidence the domain logic\nthe agent calls is correct"| DOMAIN
+    DEV -.->|"reviewed during development,\nnot at runtime"| AGENT
