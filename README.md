@@ -2,7 +2,7 @@
 
 ## Original Project (Modules 1–3)
 
-This repo started as **PawPal+**, a Module 2 project: a Streamlit app that helps a pet owner track care tasks (walks, feeding, meds, grooming) across multiple pets. The original goal was a plain-Python domain model — `Owner`, `Pet`, `Task`, `Scheduler` — that could sort tasks by priority or time, filter by pet or completion status, detect scheduling conflicts, and auto-reschedule recurring tasks, all wired up to a basic CRUD UI. No AI was involved at that stage; it was pure object-oriented design and testable business logic, built from a UML draft first (`diagrams/uml_draft.mmd`, `diagrams/uml_final.mmd`).
+This repo started as **PawPal+**, a Module 2 project: a Streamlit app that helps a pet owner track care tasks (walks, feeding, meds, grooming) across multiple pets. The original goal was a plain-Python domain model — `Owner`, `Pet`, `Task`, `Scheduler` — that could sort tasks by priority or time, filter by pet or completion status, detect scheduling conflicts, and auto-reschedule recurring tasks, all wired up to a basic Streamlit UI. No AI was involved at that stage; it was pure object-oriented design and testable business logic, built from a UML draft first (`diagrams/uml_draft.mmd`, `diagrams/uml_final.mmd`).
 
 This project takes that same domain model and layers an applied-AI system on top of it, without changing the underlying scheduling logic.
 
