@@ -104,7 +104,7 @@ echo "API_KEY=your-gemini-api-key-here" > .env
 streamlit run app.py
 ```
 
-Once it's running: go to the **Main Page**, set an owner name, add a pet or two, and add some tasks. Then switch to the **AI Assistant** page in the sidebar to chat with it. The AI Assistant page works only when `API_KEY` is set; everything else (scheduling, sorting, conflict detection, CSV persistence) works with no key at all.
+Once it's running: go to the **Main Page**, set an owner name, add a pet or two, and add some tasks. Then switch to the **AI Assistant** page in the sidebar to chat with it. A mode toggle at the top of the chat switches between **"Ask a question"** (read-only, grounded in the owner's data) and **"Make a change"** (lets the AI call `add_pet`/`add_task`/`remove_task`/`mark_task_complete`/`get_conflicts` and saves the result). The AI Assistant page works only when `API_KEY` is set; everything else (scheduling, sorting, conflict detection, CSV persistence) works with no key at all.
 
 To run the CLI demo (no Streamlit, no API key needed) or the test suite:
 
@@ -115,7 +115,7 @@ python -m pytest tests/test_pawpal.py -v
 
 ## Sample Interactions
 
-These are real transcripts captured against the live Gemini API using an actual saved owner ("Jordan," with pets Mochi, Mitt, and Mushu), not hand-written examples.
+These are real transcripts captured against the live Gemini API using an actual saved owner ("Jordan," with pets Mochi, Mitt, and Mushu), not hand-written examples. The RAG examples (1–2) go through the chat's "Ask a question" mode; the agent examples (3–4) go through "Make a change," which calls `GeminiClient.run_action()` and persists the result with `storage.save_owner()` exactly as the chat page does.
 
 **1. RAG question — multi-task lookup for one pet**
 
