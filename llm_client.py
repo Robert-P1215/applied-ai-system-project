@@ -3,7 +3,7 @@ Gemini client wrapper used by PawPal+.
 
 Handles:
 - Configuring the Gemini client from the API_KEY environment variable
-- Answering natural-language questions about an owner's pets/tasks
+- RAG style answers that use only snippets retrieved by PetRetriever
 - Performing actions (add/remove pets & tasks, mark tasks complete) via
   Gemini function calling, bound to a specific Owner/Scheduler
 
@@ -15,24 +15,45 @@ Experiment with:
 
 import os
 from datetime import date, time
+from time import sleep
 
+from dotenv import load_dotenv
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from pawpal_system import Owner, Pet, Scheduler, Task
 
+load_dotenv()
+
 GEMINI_MODEL_NAME = "gemini-3.5-flash"
+
+
+class GeminiAPIError(Exception):
+    """
+    Raised when a Gemini API call ultimately fails — after retries are
+    exhausted for transient errors, or immediately for non-retryable ones.
+    The message is written to be shown directly to the end user, so callers
+    should surface it rather than swallow it into a normal answer string.
+    """
 
 
 class GeminiClient:
     """
     Wrapper around the Gemini model for PawPal+.
 
+    answer_from_snippets and run_action raise GeminiAPIError if the call
+    ultimately fails (overloaded, rate/quota limited, etc.) — callers should
+    catch it and show its message, since it's already written for the end
+    user rather than being an internal detail.
+
     Usage:
         client = GeminiClient()
 
-        answer = client.ask(query, owner)
-        result = client.run_action(query, owner)
+        snippets = PetRetriever(owner).retrieve(query)
+        try:
+            answer = client.answer_from_snippets(query, snippets)
+        except GeminiAPIError as e:
+            answer = str(e)
     """
 
     def __init__(self):
@@ -76,42 +97,91 @@ class GeminiClient:
         return "\n".join(lines)
 
     # -----------------------------------------------------------
-    # Q&A: answer using only the owner's current schedule data
+    # Shared API call: retries transient failures, raises a specific
+    # GeminiAPIError with a user-facing reason for everything else
     # -----------------------------------------------------------
 
-    def ask(self, query: str, owner: Owner) -> str:
+    def _generate_content(self, **kwargs) -> str:
         """
-        Answer a question about `owner`'s pets/tasks using only their current
-        schedule data as context. Refuses to guess if the data doesn't cover it.
+        Call Gemini's generate_content, retrying transient server overloads
+        (ServerError, e.g. 503) a couple of times with backoff. Rate/quota
+        limits (ClientError 429) and any other failure are not retried —
+        retrying an exhausted quota immediately just fails again — and are
+        raised as GeminiAPIError with a message identifying which of the two
+        happened, instead of being folded into a normal answer string.
         """
-        context = self._describe_schedule(owner)
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self.client.models.generate_content(model=GEMINI_MODEL_NAME, **kwargs)
+                return (response.text or "").strip()
+            except errors.ServerError as e:
+                if attempt < max_attempts:
+                    sleep(2 ** (attempt - 1))  # 1s, then 2s
+                    continue
+                raise GeminiAPIError(
+                    "The AI service is temporarily overloaded and didn't respond "
+                    f"after {max_attempts} attempts. Please try again in a moment. "
+                    f"(ServerError {e.code}: {e.message})"
+                ) from e
+            except errors.ClientError as e:
+                if e.code == 429:
+                    raise GeminiAPIError(
+                        "This request was rejected because the Gemini API rate or "
+                        "quota limit has been reached. Wait a bit before trying "
+                        f"again. (ClientError 429: {e.message})"
+                    ) from e
+                raise GeminiAPIError(
+                    f"The API rejected this request. (ClientError {e.code}: {e.message})"
+                ) from e
+            except Exception as e:
+                raise GeminiAPIError(
+                    f"Unexpected error talking to the AI service. ({type(e).__name__}: {e})"
+                ) from e
+
+    # -----------------------------------------------------------
+    # RAG generation: answer using only retrieved snippets
+    # -----------------------------------------------------------
+
+    def answer_from_snippets(self, query: str, snippets) -> str:
+        """
+        Generate an answer using only the retrieved snippets.
+
+        snippets: list of (label, text) tuples selected by
+        PetRetriever.retrieve, e.g. ("Mochi: Morning Walk", "Pet Mochi ...").
+
+        Mirrors DocuBot's answer_from_snippets (outside_files/llm_client.py):
+        shows each snippet with its label, instructs the model to rely only
+        on these snippets, and requires an explicit refusal when the
+        snippets aren't enough.
+        """
+        if not snippets:
+            return "I do not know based on the current schedule."
+
+        context_blocks = [f"Record: {label}\n{text}\n" for label, text in snippets]
+        context = "\n\n".join(context_blocks)
 
         prompt = f"""
-You are PawPal+, an assistant that helps a pet owner track care tasks for their pets.
+You are PawPal+, a cautious assistant helping a pet owner understand their pets' care schedule.
 
 You will receive:
-- The owner's current pets and tasks
+- A small set of retrieved records about the owner's pets and tasks
 - A question from the owner
 
-Current data for {owner.name}:
+Retrieved records:
 {context}
 
 Owner question:
 {query}
 
 Rules:
-- Answer using only the data above. Do not invent pets, tasks, or schedule details.
-- If the data does not provide enough information to answer confidently, reply exactly:
-  "I do not know based on the current schedule."
+- Answer using only the information in the records above. Do not invent
+  pets, tasks, or schedule details.
+- If the records do not provide enough evidence to answer confidently, reply
+  exactly: "I do not know based on the current schedule."
+- When you do answer, briefly mention which record(s) you relied on.
 """
-        try:
-            response = self.client.models.generate_content(
-                model=GEMINI_MODEL_NAME,
-                contents=prompt,
-            )
-            return (response.text or "").strip()
-        except Exception as e:
-            return f"API error — could not generate answer. ({type(e).__name__}: {e})"
+        return self._generate_content(contents=prompt)
 
     # -----------------------------------------------------------
     # Agent actions: let Gemini call real Scheduler/Owner operations
@@ -207,12 +277,4 @@ Owner request:
 Use the available tools to carry out the request. If the request is just a
 question, answer directly from the current data above instead of calling a tool.
 """
-        try:
-            response = self.client.models.generate_content(
-                model=GEMINI_MODEL_NAME,
-                contents=prompt,
-                config=types.GenerateContentConfig(tools=tools),
-            )
-            return (response.text or "").strip()
-        except Exception as e:
-            return f"API error — could not complete the request. ({type(e).__name__}: {e})"
+        return self._generate_content(contents=prompt, config=types.GenerateContentConfig(tools=tools))

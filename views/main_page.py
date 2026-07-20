@@ -3,6 +3,7 @@ from datetime import date, time
 from typing import Optional
 from pawpal_system import Pet, Owner, Scheduler, Task, RECURRENCE_OPTIONS
 import storage
+from views.common import load_owner_cached
 
 st.title("🐾 PawPal+")
 
@@ -11,18 +12,6 @@ def _save(owner: Optional[Owner]) -> None:
     """Persist the given owner (and all their pets/tasks) to CSV."""
     if owner is not None:
         storage.save_owner(owner)
-
-
-@st.cache_data
-def _load_owner_cached(name: str, version: float) -> Optional[Owner]:
-    """
-    Load an owner from CSV, cached per (name, version).
-
-    `version` is a CSV-mtime stamp (see storage.data_version), so this cache
-    is reused across reruns that don't touch the CSVs and is automatically
-    invalidated the moment a save changes them — no manual cache-busting.
-    """
-    return storage.load_owner(name)
 
 
 # --- Owner setup ---
@@ -44,7 +33,7 @@ if st.button("Set Owner"):
     st.session_state.owner_name = owner_name
 
 if st.session_state.owner_name:
-    owner = _load_owner_cached(st.session_state.owner_name, storage.data_version())
+    owner = load_owner_cached(st.session_state.owner_name, storage.data_version())
 else:
     owner = None
 scheduler = Scheduler(owner=owner) if owner is not None else None
