@@ -237,3 +237,25 @@ class Scheduler:
                         pet.add_task(next_task)
                     return next_task
         return None
+
+    def mark_task_incomplete(self, pet_name: str, task_name: str) -> bool:
+        """
+        Revert a completed task back to pending for the named pet.
+
+        Args:
+            pet_name:  Exact name of the pet that owns the task (case-sensitive).
+            task_name: Exact name of the task to un-mark. Only the first
+                       completed match is affected.
+
+        Returns:
+            True if a matching completed task was found and reverted, False
+            otherwise.
+        """
+        for pet in self.owner.get_pets():
+            if pet.name != pet_name:
+                continue
+            for task in pet.get_tasks():
+                if task.name == task_name and task.completion_status:
+                    task.completion_status = False
+                    return True
+        return False

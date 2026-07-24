@@ -5,6 +5,7 @@ from pawpal_system import Pet, Owner, Scheduler, Task, RECURRENCE_OPTIONS
 import storage
 from views.common import load_owner_cached
 
+st.set_page_config(layout="centered")
 st.title("🐾 PawPal+")
 
 
@@ -147,6 +148,10 @@ if scheduler is not None:
         # --- Fetch tasks based on filters ---
         if status_filter == "Completed":
             schedule = scheduler.filter_by_status(completed=True)
+            if pet_filter != "All pets":
+                schedule = [t for t in schedule if any(
+                    p.name == pet_filter and t in p.get_tasks() for p in pets
+                )]
         elif pet_filter != "All pets" and status_filter == "Pending":
             schedule = scheduler.filter_by_pet(pet_filter, sort_key=sort_key)
         elif status_filter == "All":
@@ -206,6 +211,31 @@ if scheduler is not None:
                 )
     else:
         st.info("No pending tasks to complete.")
+
+    # --- Undo a completed task ---
+    st.divider()
+    st.subheader("Completed Tasks")
+    completed_options = {}
+    for pet in pets:
+        for task in pet.get_tasks():
+            if task.completion_status:
+                label = f"{pet.name}: {task.name} ({task.due_date})"
+                completed_options[label] = (pet.name, task.name)
+
+    if completed_options:
+        st.table([
+            {"Pet": pet_n, "Task": task_n}
+            for pet_n, task_n in completed_options.values()
+        ])
+        selected_completed = st.selectbox("Select task to mark incomplete", list(completed_options.keys()))
+        if st.button("Mark Incomplete"):
+            pet_n, task_n = completed_options[selected_completed]
+            scheduler.mark_task_incomplete(pet_n, task_n)
+            _save(owner)
+            st.success(f"'{task_n}' marked as incomplete.")
+            st.rerun()
+    else:
+        st.info("No completed tasks yet.")
 
     # --- Remove a task ---
     st.divider()
